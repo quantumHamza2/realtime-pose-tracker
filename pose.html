@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Full Screen Mediapipe Pose — Tasks API (with Distances, FPS, Grid)</title>
+
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #000;
+      color: #fff;
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    #app {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    video#input_video {
+      display: none;
+    }
+
+    canvas#output_canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+      image-rendering: optimizeQuality;
+    }
+
+    #controls {
+      position: absolute;
+      z-index: 20;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    button {
+      background: #00f0db;
+      color: #000;
+      border: none;
+      padding: 12px 18px;
+      font-weight: 700;
+      font-size: 16px;
+      border-radius: 10px;
+      cursor: pointer;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+      transition: all 0.2s ease;
+    }
+
+    button:hover:not([disabled]) {
+      transform: scale(1.05);
+    }
+
+    button[disabled] {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    #status {
+      position: absolute;
+      top: 18px;
+      left: 18px;
+      background: rgba(0,0,0,0.45);
+      padding: 8px 12px;
+      border-radius: 8px;
+      color: #fff;
+      font-weight: 600;
+      z-index: 20;
+      max-width: 300px;
+    }
+
+    .small {
+      font-size: 12px;
+      opacity: 0.9;
+      margin-top: 4px;
+      color: #ddd;
+    }
+
+    #fpsCounter {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      background: rgba(0,0,0,0.45);
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 14px;
+      z-index: 20;
+    }
+
+    @media (max-width:600px) {
+      button { padding: 10px 14px; font-size:14px; }
+      #status { font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <video id="input_video" playsinline muted></video>
+    <canvas id="output_canvas" width="1280" height="720"></canvas>
+
+    <div id="status">
+      <div id="title">Mediapipe Pose — Tasks API</div>
+      <div id="info" class="small">Model not loaded</div>
+    </div>
+
+    <div id="fpsCounter">FPS: 0</div>
+
+    <div id="controls">
+      <button id="startBtn">Start Camera</button>
+      <button id="stopBtn" disabled>Stop</button>
+      <button id="toggleDistances" disabled>Hide Distances</button>
+      <button id="toggleMirror" disabled>Mirror: ON</button>
+      <button id="toggleGrid" disabled>Grid: OFF</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { FilesetResolver, PoseLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest";
+
+    // DOM references
+    const video = document.getElementById('input_video');
+    const canvas = document.getElementById('output_canvas');
+    const ctx = canvas.getContext('2d', { alpha: true });
+    const infoEl = document.getElementById('info');
+    const fpsEl = document.getElementById('fpsCounter');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const toggleDistancesBtn = document.getElementById('toggleDistances');
+    const toggleMirrorBtn = document.getElementById('toggleMirror');
+    const toggleGridBtn = document.getElementById('toggleGrid');
+
+    // --- App State ---
+    let landmarker = null;
+    let cameraStream = null;
+    let rafId = null;
+    let running = false;
+    let showDistances = true;
+    let mirror = true;
+    let showGrid = false;
+    let fps = 0;
+    let lastTime = performance.now();
+
+    const LM = {
+      NOSE: 0, LEFT_EYE: 2, RIGHT_EYE: 5,
+      LEFT_EAR: 7, RIGHT_EAR: 8,
+      LEFT_SHOULDER: 11, RIGHT_SHOULDER: 12,
+      LEFT_ELBOW: 13, RIGHT_ELBOW: 14,
+      LEFT_WRIST: 15, RIGHT_WRIST: 16,
+      LEFT_HIP: 23, RIGHT_HIP: 24,
+      LEFT_KNEE: 25, RIGHT_KNEE: 26,
+      LEFT_ANKLE: 27, RIGHT_ANKLE: 28
+    };
+
+    const POSE_CONNECTIONS = [
+      [LM.LEFT_SHOULDER, LM.RIGHT_SHOULDER],
+      [LM.LEFT_HIP, LM.RIGHT_HIP],
+      [LM.LEFT_SHOULDER, LM.LEFT_ELBOW],
+      [LM.LEFT_ELBOW, LM.LEFT_WRIST],
+      [LM.RIGHT_SHOULDER, LM.RIGHT_ELBOW],
+      [LM.RIGHT_ELBOW, LM.RIGHT_WRIST],
+      [LM.LEFT_SHOULDER, LM.LEFT_HIP],
+      [LM.RIGHT_SHOULDER, LM.RIGHT_HIP],
+      [LM.LEFT_HIP, LM.LEFT_KNEE],
+      [LM.LEFT_KNEE, LM.LEFT_ANKLE],
+      [LM.RIGHT_HIP, LM.RIGHT_KNEE],
+      [LM.RIGHT_KNEE, LM.RIGHT_ANKLE]
+    ];
+
+    // --- Helpers ---
+    function fitCanvasToWindow() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', fitCanvasToWindow);
+    fitCanvasToWindow();
+
+    function toPixel(lm) {
+      return {
+        x: lm.x * canvas.width,
+        y: lm.y * canvas.height,
+        z: lm.z ?? 0,
+      };
+    }
+
+    function drawPoint(x, y, radius = 5, color = '#ff007f') {
+      ctx.beginPath();
+      ctx.fillStyle = color;
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawLine(x1, y1, x2, y2, color = '#00FFFF', width = 3) {
+      ctx.beginPath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+
+    function drawGrid() {
+      const spacing = 100;
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < canvas.width; x += spacing) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y < canvas.height; y += spacing) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+    }
+
+    function pixelDistance(a, b) {
+      const dx = a.x - b.x, dy = a.y - b.y;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function drawDistanceLabel(a, b, label) {
+      drawLine(a.x, a.y, b.x, b.y, '#ffd166', 2);
+      const midX = (a.x + b.x) / 2;
+      const midY = (a.y + b.y) / 2;
+      const distPx = pixelDistance(a, b);
+      const text = `${label}: ${distPx.toFixed(1)} px`;
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '16px Inter, Arial';
+      ctx.fillText(text, midX + 6, midY - 6);
+    }
+
+    function updateFPS() {
+      const now = performance.now();
+      const delta = now - lastTime;
+      fps = 1000 / delta;
+      lastTime = now;
+      fpsEl.textContent = `FPS: ${fps.toFixed(1)}`;
+    }
+
+    // --- Core Drawing ---
+    function drawResults(landmarks) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (mirror) {
+        ctx.save();
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+        ctx.restore();
+      } else {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      }
+
+      if (showGrid) drawGrid();
+      if (!landmarks || landmarks.length === 0) return;
+
+      const pixels = landmarks.map(toPixel);
+
+      for (const [i, j] of POSE_CONNECTIONS) {
+        const a = pixels[i], b = pixels[j];
+        if (!a || !b) continue;
+        drawLine(a.x, a.y, b.x, b.y, '#00FFFF', 3);
+      }
+
+      for (let i = 0; i < pixels.length; i++) {
+        const p = pixels[i];
+        drawPoint(p.x, p.y, 4, '#FF007F');
+      }
+
+      if (showDistances) {
+        drawDistanceLabel(pixels[LM.LEFT_SHOULDER], pixels[LM.LEFT_ELBOW], 'L Upper Arm');
+        drawDistanceLabel(pixels[LM.LEFT_ELBOW], pixels[LM.LEFT_WRIST], 'L Forearm');
+        drawDistanceLabel(pixels[LM.RIGHT_SHOULDER], pixels[LM.RIGHT_ELBOW], 'R Upper Arm');
+        drawDistanceLabel(pixels[LM.RIGHT_ELBOW], pixels[LM.RIGHT_WRIST], 'R Forearm');
+        drawDistanceLabel(pixels[LM.LEFT_HIP], pixels[LM.LEFT_KNEE], 'L Thigh');
+        drawDistanceLabel(pixels[LM.LEFT_KNEE], pixels[LM.LEFT_ANKLE], 'L Calf');
+        drawDistanceLabel(pixels[LM.RIGHT_HIP], pixels[LM.RIGHT_KNEE], 'R Thigh');
+        drawDistanceLabel(pixels[LM.RIGHT_KNEE], pixels[LM.RIGHT_ANKLE], 'R Calf');
+        drawDistanceLabel(pixels[LM.LEFT_SHOULDER], pixels[LM.RIGHT_SHOULDER], 'Shoulder Width');
+        drawDistanceLabel(pixels[LM.LEFT_HIP], pixels[LM.RIGHT_HIP], 'Hip Width');
+      }
+
+      ctx.fillStyle = '#0f0';
+      ctx.font = '14px monospace';
+      ctx.fillText(`Landmarks: ${landmarks.length}`, 20, canvas.height - 20);
+      updateFPS();
+    }
+
+    async function loadModel() {
+      infoEl.textContent = 'Loading Pose Model...';
+      const fileset = await FilesetResolver.forVisionTasks(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+      );
+      const poseLandmarker = await PoseLandmarker.createFromOptions(fileset, {
+        baseOptions: {
+          modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task',
+          delegate: 'GPU'
+        },
+        runningMode: 'VIDEO',
+        numPoses: 1
+      });
+
+      infoEl.textContent = 'Model Loaded ✅';
+      return poseLandmarker;
+    }
+
+    async function videoLoop() {
+      if (!landmarker || !running) return;
+      const now = performance.now();
+      const result = landmarker.detectForVideo(video, now);
+      if (result?.landmarks?.length > 0) {
+        drawResults(result.landmarks[0]);
+      } else {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      }
+      rafId = requestAnimationFrame(videoLoop);
+    }
+
+    async function startAll() {
+      startBtn.disabled = true;
+      infoEl.textContent = 'Starting Camera...';
+
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 1280, height: 720, facingMode: 'user' },
+          audio: false,
+        });
+        video.srcObject = cameraStream;
+        await video.play();
+        fitCanvasToWindow();
+      } catch (err) {
+        alert('Camera access denied or not available.');
+        console.error(err);
+        startBtn.disabled = false;
+        return;
+      }
+
+      try {
+        landmarker = await loadModel();
+      } catch (err) {
+        alert('Failed to load model.');
+        startBtn.disabled = false;
+        return;
+      }
+
+      running = true;
+      stopBtn.disabled = false;
+      toggleDistancesBtn.disabled = false;
+      toggleMirrorBtn.disabled = false;
+      toggleGridBtn.disabled = false;
+      infoEl.textContent = 'Running';
+      videoLoop();
+    }
+
+    function stopAll() {
+      running = false;
+      if (rafId) cancelAnimationFrame(rafId);
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(t => t.stop());
+      }
+      if (landmarker) {
+        try { landmarker.close(); } catch {}
+      }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      infoEl.textContent = 'Stopped';
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      toggleDistancesBtn.disabled = true;
+      toggleMirrorBtn.disabled = true;
+      toggleGridBtn.disabled = true;
+    }
+
+    startBtn.addEventListener('click', startAll);
+    stopBtn.addEventListener('click', stopAll);
+
+    toggleDistancesBtn.addEventListener('click', () => {
+      showDistances = !showDistances;
+      toggleDistancesBtn.textContent = showDistances ? 'Hide Distances' : 'Show Distances';
+    });
+
+    toggleMirrorBtn.addEventListener('click', () => {
+      mirror = !mirror;
+      toggleMirrorBtn.textContent = `Mirror: ${mirror ? 'ON' : 'OFF'}`;
+    });
+
+    toggleGridBtn.addEventListener('click', () => {
+      showGrid = !showGrid;
+      toggleGridBtn.textContent = `Grid: ${showGrid ? 'ON' : 'OFF'}`;
+    });
+
+    infoEl.textContent = 'Ready to Start';
+  </script>
+</body>
+</html>
