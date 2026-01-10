@@ -1,30 +1,37 @@
-**🧍‍♂️ Real-Time Pose Tracking & Body Measurement (MediaPipe)
-**
+# 🧍‍♂️ Real-Time Pose Tracking & Body Measurement (MediaPipe)
 
-**🚀 Features
-**
-📸 Live webcam pose detection
+A browser-based real-time human pose tracking application built using **MediaPipe Pose (Tasks API)** and **HTML Canvas**.  
+It uses your webcam to detect full-body landmarks, render a live skeletal model, and compute dynamic body-part distances with FPS monitoring and interactive controls.
 
-🧠 AI-powered 33-point body landmark tracking
+---
 
-🕸 Real-time skeletal overlay
+## 🚀 Features
 
-📏 Dynamic limb and body-segment distance measurement
+- 📸 Live webcam pose detection  
+- 🧠 AI-powered 33-point body landmark tracking  
+- 🕸 Real-time skeletal overlay  
+- 📏 Dynamic limb and body-segment distance measurement  
+- 🔁 Mirror mode  
+- 🧩 Optional grid overlay  
+- ⚡ Live FPS counter  
+- 🎛 Start / Stop camera controls  
 
-🔁 Mirror mode
+---
 
-🧩 Optional grid overlay
+## 🛠 Tech Stack
 
-⚡ Live FPS counter
+- **JavaScript (ES Modules)**  
+- **MediaPipe Tasks Vision API**  
+- **HTML5 Canvas**  
+- **Web APIs** (`getUserMedia`, `requestAnimationFrame`)  
 
-🎛 Start / Stop camera controls
+---
 
-**🛠 Tech Stack
-**
-JavaScript (ES Modules)
+## 📂 Project Structure
 
-MediaPipe Tasks Vision API
-
-HTML5 Canvas
-
-Web APIs (getUserMedia, requestAnimationFrame)
+```txt
+HEY PROJ
+├── index.html        # Main pose tracking app
+├── test_cam.html     # Camera testing page
+├── package.json
+├── README.md
