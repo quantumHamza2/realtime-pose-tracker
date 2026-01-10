@@ -1,7 +1,8 @@
-🧍‍♂️ Real-Time Pose Tracking & Body Measurement (MediaPipe)
+**🧍‍♂️ Real-Time Pose Tracking & Body Measurement (MediaPipe)
+**
 
-🚀 Features
-
+**🚀 Features
+**
 📸 Live webcam pose detection
 
 🧠 AI-powered 33-point body landmark tracking
@@ -18,8 +19,8 @@
 
 🎛 Start / Stop camera controls
 
-🛠 Tech Stack
-
+**🛠 Tech Stack
+**
 JavaScript (ES Modules)
 
 MediaPipe Tasks Vision API
