@@ -154,6 +154,7 @@
     let cameraStream = null;
     let rafId = null;
     let running = false;
+    let lifecycleVersion = 0;
     let showDistances = true;
     let mirror = true;
     let showGrid = false;
@@ -328,7 +329,9 @@
     async function videoLoop() {
       if (!landmarker || !running) return;
       const now = performance.now();
-      const result = landmarker.detectForVideo(video, now);
+      let result;
+      try { result = landmarker.detectForVideo(video, now); }
+      catch (error) { stopAll(); infoEl.textContent = 'Pose detection failed. Camera stopped; please retry.'; return; }
       if (result?.landmarks?.length > 0) {
         drawResults(result.landmarks[0]);
       } else {
@@ -339,28 +342,38 @@
     }
 
     async function startAll() {
+      const attempt = ++lifecycleVersion;
       startBtn.disabled = true;
       infoEl.textContent = 'Starting Camera...';
 
       try {
-        cameraStream = await navigator.mediaDevices.getUserMedia({
+        const stream = await navigator.mediaDevices.getUserMedia({
           video: { width: 1280, height: 720, facingMode: 'user' },
           audio: false,
         });
+        if (attempt !== lifecycleVersion) { stream.getTracks().forEach(t => t.stop()); return; }
+        cameraStream = stream;
         video.srcObject = cameraStream;
         await video.play();
+        if (attempt !== lifecycleVersion) return;
         fitCanvasToWindow();
       } catch (err) {
-        alert('Camera access denied or not available.');
+        if (attempt !== lifecycleVersion) return;
+        stopAll();
+        infoEl.textContent = 'Camera unavailable. Use localhost/HTTPS and allow camera access.';
         console.error(err);
         startBtn.disabled = false;
         return;
       }
 
       try {
-        landmarker = await loadModel();
+        const loaded = await loadModel();
+        if (attempt !== lifecycleVersion) { loaded.close(); return; }
+        landmarker = loaded;
       } catch (err) {
-        alert('Failed to load model.');
+        if (attempt !== lifecycleVersion) return;
+        stopAll();
+        infoEl.textContent = 'Model failed to load. Camera stopped; check your connection and retry.';
         startBtn.disabled = false;
         return;
       }
@@ -375,15 +388,19 @@
     }
 
     function stopAll() {
+      lifecycleVersion++;
       running = false;
       if (rafId) cancelAnimationFrame(rafId);
       if (cameraStream) {
         cameraStream.getTracks().forEach(t => t.stop());
+        cameraStream = null;
       }
       if (landmarker) {
         try { landmarker.close(); } catch {}
+        landmarker = null;
       }
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      video.srcObject = null;
       infoEl.textContent = 'Stopped';
       startBtn.disabled = false;
       stopBtn.disabled = true;
@@ -392,6 +409,7 @@
       toggleGridBtn.disabled = true;
     }
 
+    window.addEventListener('pagehide', stopAll);
     startBtn.addEventListener('click', startAll);
     stopBtn.addEventListener('click', stopAll);
 
