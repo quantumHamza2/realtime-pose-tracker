@@ -10,7 +10,7 @@ function setup(failModel = false) {
   const events = {};
   const context = vm.createContext({
     document: {getElementById(id) {
-      return elements[id] ||= { addEventListener: () => {}, play: async () => {}, getContext: () => ({clearRect(){},drawImage(){}}) };
+      return elements[id] ||= { addEventListener: () => {}, play: async () => {}, getContext: () => ({clearRect(){},drawImage(){},save(){},scale(){},restore(){}}) };
     }},
     window: {innerWidth:1280, innerHeight:720, addEventListener:(name, fn) => events[name] = fn},
     navigator: {mediaDevices:{getUserMedia:async () => ({getTracks:() => [{stop:() => stopped++}]})}},

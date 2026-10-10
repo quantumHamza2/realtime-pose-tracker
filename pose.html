@@ -197,7 +197,7 @@
 
     function toPixel(lm) {
       return {
-        x: lm.x * canvas.width,
+        x: (mirror ? 1 - lm.x : lm.x) * canvas.width,
         y: lm.y * canvas.height,
         z: lm.z ?? 0,
       };
@@ -332,12 +332,8 @@
       let result;
       try { result = landmarker.detectForVideo(video, now); }
       catch (error) { stopAll(); infoEl.textContent = 'Pose detection failed. Camera stopped; please retry.'; return; }
-      if (result?.landmarks?.length > 0) {
-        drawResults(result.landmarks[0]);
-      } else {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      }
+      // Keep camera transforms and grid consistent even when no pose is detected.
+      drawResults(result?.landmarks?.[0]);
       rafId = requestAnimationFrame(videoLoop);
     }
 
