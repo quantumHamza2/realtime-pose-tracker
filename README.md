@@ -1,37 +1,24 @@
-# 🧍‍♂️ Real-Time Pose Tracking & Body Measurement (MediaPipe)
+# Real-time Pose Tracker
 
-A browser-based real-time human pose tracking application built using **MediaPipe Pose (Tasks API)** and **HTML Canvas**.  
-It uses your webcam to detect full-body landmarks, render a live skeletal model, and compute dynamic body-part distances with FPS monitoring and interactive controls.
+Browser webcam demo using MediaPipe Tasks Vision, Canvas and JavaScript. It draws 33 pose landmarks, estimates screen-space segment distances, and offers mirror/grid controls.
 
----
+## Run
 
-## 🚀 Features
+```sh
+python3 -m http.server 8000 --bind 127.0.0.1
+```
 
-- 📸 Live webcam pose detection  
-- 🧠 AI-powered 33-point body landmark tracking  
-- 🕸 Real-time skeletal overlay  
-- 📏 Dynamic limb and body-segment distance measurement  
-- 🔁 Mirror mode  
-- 🧩 Optional grid overlay  
-- ⚡ Live FPS counter  
-- 🎛 Start / Stop camera controls  
+Open http://localhost:8000/pose.html and press **Start Camera**. Grant camera permission. JavaScript, model weights and WASM download from external CDNs; a network connection and compatible browser/GPU are required. `test_cam.html` is a separate camera diagnostic.
 
----
+**Stop** releases the camera. Startup/model failures and leaving the page also release resources. Inference happens in the browser; this demo contains no video-upload endpoint. Distances are image-space estimates, not calibrated body measurements or medical assessments.
 
-## 🛠 Tech Stack
+The tracked `node_modules` directory is legacy content; the page imports Tasks Vision from a CDN and does not require npm installation. A future cleanup can remove vendored dependencies without changing the app.
 
-- **JavaScript (ES Modules)**  
-- **MediaPipe Tasks Vision API**  
-- **HTML5 Canvas**  
-- **Web APIs** (`getUserMedia`, `requestAnimationFrame`)  
+## Manual checks
 
----
+- Allow camera access, then stop and verify the camera indicator turns off.
+- Deny access: a clear message appears and Start becomes available again.
+- Block the model download: camera shuts off and retry is available.
+- Restart twice; verify no old camera stream remains active.
 
-## 📂 Project Structure
-
-```txt
-HEY PROJ
-├── index.html        # Main pose tracking app
-├── test_cam.html     # Camera testing page
-├── package.json
-├── README.md
+Automated resource-lifecycle checks: `node --test tests/lifecycle.test.cjs`. These mock the webcam and model; real camera/browser checks remain manual.
